@@ -113,19 +113,26 @@ def get_session_str(cookies):
 
 
 def check_in(account):
-    """对单个账号执行签到，返回 (是否成功, 账号名, 原始额度, 错误/session过期, 获得额度, 签到后额度)"""
+    """对单个账号执行签到"""
     name = account.get("name", "Account")
     email = account.get("email", "")
+    provider = account.get("provider", "agentrouter")
     display_name = f"{name} ({email})" if email else name
     cookies = account.get("cookies", {})
     api_user = account.get("api_user", "")
 
+    # 根据 provider 确定 API 地址
+    if provider == "iamhc":
+        api_base = "https://api.iamhc.cn/api"
+    else:
+        api_base = "https://agentrouter.org/api"
+
     if not api_user or not cookies:
-        return False, display_name, 0, "缺少 api_user 或 cookies", 0, 0
+        return False, display_name, 0, "缺少 api_user 或 cookies", 0, 0, provider
 
     session_cookie = get_session_str(cookies)
     if not session_cookie:
-        return False, display_name, 0, "未找到 session cookie", 0, 0
+        return False, display_name, 0, "未找到 session cookie", 0, 0, provider
 
     # 解析 session 过期时间
     session_expiry = decode_session(session_cookie)
@@ -151,7 +158,7 @@ def check_in(account):
         # 查询用户信息 - AgentRouter 在此自动完成签到
         # （无需单独的签到接口，查询时自动签到）
         quota_raw = 0
-        user_resp = client.get(f"{API_BASE}/user/self", headers=headers)
+        user_resp = client.get(f"{api_base}/user/self", headers=headers)
         print(f"[{display_name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:150]: {user_resp.text[:150]}")
         if user_resp.status_code == 200:
             try:
@@ -164,22 +171,40 @@ def check_in(account):
                 used_quota = user_data["data"].get("used_quota", 0)
                 quota_display = f"${round(quota_raw/500000, 2)}" if quota_raw > 0 else "$0"
                 print(f"[{display_name}] 💰 额度: {quota_display}, 已用: {used_quota}")
-                print(f"[{display_name}] ✅ 签到完成!")
-                return True, display_name, quota_raw, session_expiry, 0, quota_raw
+
+                # AgentRouter: 查询用户信息时自动签到
+                # iamhc: 需要单独调用签到接口
+                if provider == "iamhc":
+                    checkin_resp = client.post(f"{api_base}/user/checkin", headers=headers, json={})
+                    if checkin_resp.status_code == 200:
+                        try:
+                            cr = checkin_resp.json()
+                            if cr.get("success") or cr.get("ret") == 1:
+                                print(f"[{display_name}] ✅ 签到成功!")
+                            else:
+                                print(f"[{display_name}] ⚠️ 签到结果: {cr.get('message', '未知')}")
+                        except:
+                            print(f"[{display_name}] ⚠️ 签到响应: {checkin_resp.text[:100]}")
+                    else:
+                        print(f"[{display_name}] ⚠️ 签到 HTTP {checkin_resp.status_code}: {checkin_resp.text[:100]}")
+                else:
+                    print(f"[{display_name}] ✅ 签到完成!")
+
+                return True, display_name, quota_raw, session_expiry, 0, quota_raw, provider
             else:
                 err = user_data.get("message", "查询失败")
                 print(f"[{display_name}] ❌ 用户信息查询失败: {err}")
-                return False, display_name, 0, err, 0, 0
+                return False, display_name, 0, err, 0, 0, provider
         else:
             err = f"HTTP {user_resp.status_code}"
             print(f"[{display_name}] ❌ {err}")
-            return False, display_name, 0, err, 0, 0
+            return False, display_name, 0, err, 0, 0, provider
 
     except Exception as e:
         print(f"[{display_name}] ❌ 异常: {e}")
         import traceback
         traceback.print_exc()
-        return False, display_name, 0, str(e), 0, 0
+        return False, display_name, 0, str(e), 0, 0, provider
     finally:
         client.close()
 
@@ -212,8 +237,8 @@ def main():
     results = []
     for i, account in enumerate(accounts):
         print(f"\n--- 账号 {i+1} ---")
-        ok, name, quota_raw, extra, earned, after_raw = check_in(account)
-        results.append((ok, name, quota_raw, extra, earned, after_raw))
+        ok, name, quota_raw, extra, earned, after_raw, provider = check_in(account)
+        results.append((ok, name, quota_raw, extra, earned, after_raw, provider))
 
     success_count = sum(1 for r in results if r[0])
 
@@ -224,12 +249,11 @@ def main():
     tg_lines = [f"{emoji} AgentRouter 签到通知"]
     tg_lines.append("")
 
-    for ok, name, quota_raw, extra, earned, after_raw in results:
+    for ok, name, quota_raw, extra, earned, after_raw, provider in results:
         quota_display = f"${round(quota_raw/500000, 2)}"
-        # AgentRouter 没有独立的签到接口，签到在查询时自动完成
-        # 无法获取本次签到获得的具体额度
+        provider_label = "AgentRouter" if provider == "agentrouter" else "iamhc"
         icon = "✅" if ok else "❌"
-        tg_lines.append(f"{icon} 签到{'成功' if ok else '失败'}" + (f"" if ok else f": {extra}"))
+        tg_lines.append(f"{icon} [{provider_label}] 签到{'成功' if ok else '失败'}" + (f"" if ok else f": {extra}"))
         tg_lines.append(f"👤 登录账户: {name}")
         tg_lines.append(f"💰 当前余额: {quota_display}")
         tg_lines.append(f"🔑 Session: {extra}")
