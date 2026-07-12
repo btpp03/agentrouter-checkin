@@ -115,15 +115,17 @@ def get_session_str(cookies):
 def check_in(account):
     """对单个账号执行签到，返回 (是否成功, 账号名, 原始额度, 错误/session过期, 获得额度, 签到后额度)"""
     name = account.get("name", "Account")
+    email = account.get("email", "")
+    display_name = f"{name} ({email})" if email else name
     cookies = account.get("cookies", {})
     api_user = account.get("api_user", "")
 
     if not api_user or not cookies:
-        return False, name, 0, "缺少 api_user 或 cookies", 0, 0
+        return False, display_name, 0, "缺少 api_user 或 cookies", 0, 0
 
     session_cookie = get_session_str(cookies)
     if not session_cookie:
-        return False, name, 0, "未找到 session cookie", 0, 0
+        return False, display_name, 0, "未找到 session cookie", 0, 0
 
     # 解析 session 过期时间
     session_expiry = decode_session(session_cookie)
@@ -150,34 +152,34 @@ def check_in(account):
         # （无需单独的签到接口，查询时自动签到）
         quota_raw = 0
         user_resp = client.get(f"{API_BASE}/user/self", headers=headers)
-        print(f"[{name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:150]: {user_resp.text[:150]}")
+        print(f"[{display_name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:150]: {user_resp.text[:150]}")
         if user_resp.status_code == 200:
             try:
                 user_data = user_resp.json()
             except json.JSONDecodeError:
-                print(f"[{name}] ⚠️ user/self 返回非 JSON: {user_resp.text[:200]}")
+                print(f"[{display_name}] ⚠️ user/self 返回非 JSON: {user_resp.text[:200]}")
                 user_data = {}
             if user_data.get("success") and user_data.get("data"):
                 quota_raw = user_data["data"].get("quota", 0)
                 used_quota = user_data["data"].get("used_quota", 0)
                 quota_display = f"${round(quota_raw/500000, 2)}" if quota_raw > 0 else "$0"
-                print(f"[{name}] 💰 额度: {quota_display}, 已用: {used_quota}")
-                print(f"[{name}] ✅ 签到完成!")
-                return True, name, quota_raw, session_expiry, 0, quota_raw
+                print(f"[{display_name}] 💰 额度: {quota_display}, 已用: {used_quota}")
+                print(f"[{display_name}] ✅ 签到完成!")
+                return True, display_name, quota_raw, session_expiry, 0, quota_raw
             else:
                 err = user_data.get("message", "查询失败")
-                print(f"[{name}] ❌ 用户信息查询失败: {err}")
-                return False, name, 0, err, 0, 0
+                print(f"[{display_name}] ❌ 用户信息查询失败: {err}")
+                return False, display_name, 0, err, 0, 0
         else:
             err = f"HTTP {user_resp.status_code}"
-            print(f"[{name}] ❌ {err}")
-            return False, name, 0, err, 0, 0
+            print(f"[{display_name}] ❌ {err}")
+            return False, display_name, 0, err, 0, 0
 
     except Exception as e:
-        print(f"[{name}] ❌ 异常: {e}")
+        print(f"[{display_name}] ❌ 异常: {e}")
         import traceback
         traceback.print_exc()
-        return False, name, 0, str(e), 0, 0
+        return False, display_name, 0, str(e), 0, 0
     finally:
         client.close()
 
