@@ -22,7 +22,7 @@ SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 # 签到账号配置（JSON 格式）
 ACCOUNTS_JSON = os.getenv("AGENTROUTER_ACCOUNTS", "")
 
-API_BASE = "https://agentrouter.org/console/api"
+API_BASE = "https://agentrouter.org/api"
 REPO_URL = "https://github.com/btpp03/agentrouter-checkin"
 
 
@@ -131,26 +131,8 @@ def check_in(account):
     client = get_proxy_client()
 
     try:
-        # 先拿 WAF cookie（通过代理不会被拦）
-        waf_session = httpx.Client(proxy=SOCKS5_PROXY, http2=True, timeout=15.0) if SOCKS5_PROXY else httpx.Client(http2=True, timeout=15.0)
-        try:
-            waf_resp = waf_session.get("https://agentrouter.org/console/login", follow_redirects=True)
-            acw_tc_val = ""
-            for c in waf_session.cookies:
-                if c.name == "acw_tc":
-                    acw_tc_val = c.value
-                    break
-            if acw_tc_val:
-                print(f"[{name}] ✅ 获取到 acw_tc cookie")
-        except Exception:
-            acw_tc_val = ""
-        finally:
-            waf_session.close()
-
-        # 构建 Cookie 头
+        # 构建 Cookie 头 - 直接使用 session cookie
         cookie_header = f"session={session_cookie}"
-        if acw_tc_val:
-            cookie_header += f"; acw_tc={acw_tc_val}"
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
@@ -164,10 +146,11 @@ def check_in(account):
             "Content-Type": "application/json",
         }
 
-        # 查询用户信息（获取额度）
+        # 查询用户信息 - AgentRouter 在此自动完成签到
+        # （无需单独的签到接口，查询时自动签到）
         quota_raw = 0
         user_resp = client.get(f"{API_BASE}/user/self", headers=headers)
-        print(f"[{name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:200]: {user_resp.text[:200]}")
+        print(f"[{name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:150]: {user_resp.text[:150]}")
         if user_resp.status_code == 200:
             try:
                 user_data = user_resp.json()
@@ -176,46 +159,19 @@ def check_in(account):
                 user_data = {}
             if user_data.get("success") and user_data.get("data"):
                 quota_raw = user_data["data"].get("quota", 0)
+                used_quota = user_data["data"].get("used_quota", 0)
                 quota_display = f"${round(quota_raw/500000, 2)}" if quota_raw > 0 else "$0"
-                print(f"[{name}] 💰 当前额度: {quota_display}")
-
-        # 执行签到
-        checkin_resp = client.post(
-            f"{API_BASE}/user/sign_in",
-            headers=headers,
-            json={},
-        )
-        print(f"[{name}] 🔍 sign_in → HTTP {checkin_resp.status_code}, body[:200]: {checkin_resp.text[:200]}")
-
-        earned = 0
-        after_quota_raw = 0
-
-        if checkin_resp.status_code == 200:
-            try:
-                result = checkin_resp.json()
-            except json.JSONDecodeError:
-                print(f"[{name}] ⚠️ sign_in 返回非 JSON: {checkin_resp.text[:200]}")
-                result = {}
-            ret = result.get("ret", result.get("code", -1))
-            msg = result.get("msg", result.get("message", ""))
-
-            # 解析签到数据
-            data = result.get("data", {})
-            if data:
-                earned = data.get("quota", 0)
-                after_quota_raw = quota_raw + earned
-
-            if ret == 1 or ret == 0 or result.get("success"):
-                earned_display = f"${round(earned/500000, 2)}" if earned else "?"
-                print(f"[{name}] ✅ 签到成功! +{earned_display}")
-                return True, name, quota_raw, session_expiry, earned, after_quota_raw
+                print(f"[{name}] 💰 额度: {quota_display}, 已用: {used_quota}")
+                print(f"[{name}] ✅ 签到完成!")
+                return True, name, quota_raw, session_expiry, 0, quota_raw
             else:
-                print(f"[{name}] ❌ 签到失败: {msg}")
-                return False, name, quota_raw, msg, 0, quota_raw
+                err = user_data.get("message", "查询失败")
+                print(f"[{name}] ❌ 用户信息查询失败: {err}")
+                return False, name, 0, err, 0, 0
         else:
-            err = f"HTTP {checkin_resp.status_code}"
+            err = f"HTTP {user_resp.status_code}"
             print(f"[{name}] ❌ {err}")
-            return False, name, quota_raw, err, 0, quota_raw
+            return False, name, 0, err, 0, 0
 
     except Exception as e:
         print(f"[{name}] ❌ 异常: {e}")
@@ -267,15 +223,13 @@ def main():
     tg_lines.append("")
 
     for ok, name, quota_raw, extra, earned, after_raw in results:
-        before_display = f"${round(quota_raw/500000, 2)}"
-        earned_display = f"${round(earned/500000, 2)}" if earned else "$0"
-        after_display = f"${round(after_raw/500000, 2)}"
-
+        quota_display = f"${round(quota_raw/500000, 2)}"
+        # AgentRouter 没有独立的签到接口，签到在查询时自动完成
+        # 无法获取本次签到获得的具体额度
         icon = "✅" if ok else "❌"
-        tg_lines.append(f"{icon} 签到{'成功' if ok else '失败'}" + (f",本次签到获得{earned_display}" if ok else f": {extra}"))
+        tg_lines.append(f"{icon} 签到{'成功' if ok else '失败'}" + (f"" if ok else f": {extra}"))
         tg_lines.append(f"👤 登录账户: {name}")
-        tg_lines.append(f"💰 昨日余额: {before_display}")
-        tg_lines.append(f"💰 当前余额: {after_display}")
+        tg_lines.append(f"💰 当前余额: {quota_display}")
         tg_lines.append(f"🔑 Session: {extra}")
         tg_lines.append(f"⏱️ 签到时间: {now}")
         tg_lines.append("")
