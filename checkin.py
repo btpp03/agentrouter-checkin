@@ -131,11 +131,26 @@ def check_in(account):
     client = get_proxy_client()
 
     try:
-        client.cookies.set("session", session_cookie, domain="agentrouter.org")
+        # 先拿 WAF cookie（通过代理不会被拦）
+        waf_session = httpx.Client(proxy=SOCKS5_PROXY, http2=True, timeout=15.0) if SOCKS5_PROXY else httpx.Client(http2=True, timeout=15.0)
+        try:
+            waf_resp = waf_session.get("https://agentrouter.org/console/login", follow_redirects=True)
+            acw_tc_val = ""
+            for c in waf_session.cookies:
+                if c.name == "acw_tc":
+                    acw_tc_val = c.value
+                    break
+            if acw_tc_val:
+                print(f"[{name}] ✅ 获取到 acw_tc cookie")
+        except Exception:
+            acw_tc_val = ""
+        finally:
+            waf_session.close()
 
-        waf = get_waf_cookies(client)
-        if waf:
-            print(f"[{name}] ✅ WAF cookies: {list(waf.keys())}")
+        # 构建 Cookie 头
+        cookie_header = f"session={session_cookie}"
+        if acw_tc_val:
+            cookie_header += f"; acw_tc={acw_tc_val}"
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
@@ -143,6 +158,7 @@ def check_in(account):
             "Accept-Language": "zh-CN,zh;q=0.9",
             "Referer": "https://agentrouter.org/console/",
             "Origin": "https://agentrouter.org",
+            "Cookie": cookie_header,
             "new-api-user": api_user,
             "X-Requested-With": "XMLHttpRequest",
             "Content-Type": "application/json",
