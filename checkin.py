@@ -247,6 +247,9 @@ def main():
     emoji = "✅" if success_count == len(accounts) else "⚠️"
 
     tg_lines = [f"{emoji} AgentRouter 签到通知"]
+    if SOCKS5_PROXY:
+        proxy_host = SOCKS5_PROXY.split("@")[-1] if "@" in SOCKS5_PROXY else SOCKS5_PROXY
+        tg_lines.append(f"🔌 代理: {proxy_host}")
     tg_lines.append("")
 
     for ok, name, quota_raw, extra, earned, after_raw, provider in results:
