@@ -1,0 +1,31 @@
+name: AgentRouter 自动签到
+
+on:
+  schedule:
+    # 每 6 小时执行一次
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # 支持手动触发
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 安装依赖
+        run: |
+          pip install httpx[http2]
+
+      - name: 执行签到
+        env:
+          SOCKS5_PROXY: ${{ secrets.SOCKS5_PROXY }}
+          AGENTROUTER_ACCOUNTS: ${{ secrets.AGENTROUTER_ACCOUNTS }}
+        run: |
+          python checkin.py
