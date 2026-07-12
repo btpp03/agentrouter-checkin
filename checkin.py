@@ -89,8 +89,13 @@ def get_waf_cookies(client):
     client.get("https://agentrouter.org/console/login")
     waf_cookies = {}
     for cookie in client.cookies:
-        if cookie.name in ("acw_tc", "acw_sc__v2", "cdn_sec_tc"):
-            waf_cookies[cookie.name] = cookie.value
+        name = getattr(cookie, "name", None)
+        value = getattr(cookie, "value", None)
+        if name is None and isinstance(cookie, str):
+            # httpx 代理模式下 cookies 可能是字符串
+            continue
+        if name in ("acw_tc", "acw_sc__v2", "cdn_sec_tc"):
+            waf_cookies[name] = value
     return waf_cookies
 
 
@@ -114,11 +119,11 @@ def check_in(account):
     api_user = account.get("api_user", "")
 
     if not api_user or not cookies:
-        return False, name, 0, "缺少 api_user 或 cookies"
+        return False, name, 0, "缺少 api_user 或 cookies", 0, 0
 
     session_cookie = get_session_str(cookies)
     if not session_cookie:
-        return False, name, 0, "未找到 session cookie"
+        return False, name, 0, "未找到 session cookie", 0, 0
 
     # 解析 session 过期时间
     session_expiry = decode_session(session_cookie)
@@ -188,7 +193,7 @@ def check_in(account):
 
     except Exception as e:
         print(f"[{name}] ❌ 异常: {e}")
-        return False, name, 0, str(e)
+        return False, name, 0, str(e), 0, 0
     finally:
         client.close()
 
