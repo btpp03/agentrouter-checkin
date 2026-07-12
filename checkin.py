@@ -108,7 +108,7 @@ def get_session_str(cookies):
 
 
 def check_in(account):
-    """对单个账号执行签到，返回 (是否成功, 账号名, 额度, 错误信息)"""
+    """对单个账号执行签到，返回 (是否成功, 账号名, 原始额度, 错误/session过期, 获得额度, 签到后额度)"""
     name = account.get("name", "Account")
     cookies = account.get("cookies", {})
     api_user = account.get("api_user", "")
@@ -144,17 +144,14 @@ def check_in(account):
         }
 
         # 查询用户信息（获取额度）
-        quota = 0
-        quota_display = "未知"
+        quota_raw = 0
         user_resp = client.get(f"{API_BASE}/user/self", headers=headers)
         if user_resp.status_code == 200:
             user_data = user_resp.json()
             if user_data.get("success") and user_data.get("data"):
                 quota_raw = user_data["data"].get("quota", 0)
-                # 通常 quota 以 500000 为单位换算成美元
-                quota = round(quota_raw / 500000, 2) if quota_raw > 0 else 0
-                quota_display = f"${quota}"
-                print(f"[{name}] 💰 额度: {quota_display}")
+                quota_display = f"${round(quota_raw/500000, 2)}" if quota_raw > 0 else "$0"
+                print(f"[{name}] 💰 当前额度: {quota_display}")
 
         # 执行签到
         checkin_resp = client.post(
@@ -163,21 +160,31 @@ def check_in(account):
             json={},
         )
 
+        earned = 0
+        after_quota_raw = 0
+
         if checkin_resp.status_code == 200:
             result = checkin_resp.json()
             ret = result.get("ret", result.get("code", -1))
             msg = result.get("msg", result.get("message", ""))
 
+            # 解析签到数据
+            data = result.get("data", {})
+            if data:
+                earned = data.get("quota", 0)
+                after_quota_raw = quota_raw + earned
+
             if ret == 1 or ret == 0 or result.get("success"):
-                print(f"[{name}] ✅ 签到成功! {msg}")
-                return True, name, quota_display, session_expiry
+                earned_display = f"${round(earned/500000, 2)}" if earned else "?"
+                print(f"[{name}] ✅ 签到成功! +{earned_display}")
+                return True, name, quota_raw, session_expiry, earned, after_quota_raw
             else:
                 print(f"[{name}] ❌ 签到失败: {msg}")
-                return False, name, quota_display, msg
+                return False, name, quota_raw, msg, 0, quota_raw
         else:
             err = f"HTTP {checkin_resp.status_code}"
             print(f"[{name}] ❌ {err}")
-            return False, name, quota_display, err
+            return False, name, quota_raw, err, 0, quota_raw
 
     except Exception as e:
         print(f"[{name}] ❌ 异常: {e}")
@@ -214,30 +221,34 @@ def main():
     results = []
     for i, account in enumerate(accounts):
         print(f"\n--- 账号 {i+1} ---")
-        ok, name, quota, extra = check_in(account)
-        results.append((ok, name, quota, extra))
+        ok, name, quota_raw, extra, earned, after_raw = check_in(account)
+        results.append((ok, name, quota_raw, extra, earned, after_raw))
 
     success_count = sum(1 for r in results if r[0])
 
     # 构建 TG 通知
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     emoji = "✅" if success_count == len(accounts) else "⚠️"
 
-    tg_lines = [f"{emoji} <b>AgentRouter 签到</b>"]
-    tg_lines.append(f"🕐 {now}")
+    tg_lines = [f"{emoji} AgentRouter 签到通知"]
     tg_lines.append("")
 
-    for ok, name, quota, extra in results:
+    for ok, name, quota_raw, extra, earned, after_raw in results:
+        before_display = f"${round(quota_raw/500000, 2)}"
+        earned_display = f"${round(earned/500000, 2)}" if earned else "$0"
+        after_display = f"${round(after_raw/500000, 2)}"
+
         icon = "✅" if ok else "❌"
-        status = "签到成功" if ok else f"失败: {extra}"
-        tg_lines.append(f"{icon} <b>{name}</b>")
-        tg_lines.append(f"   💰 额度: {quota}")
-        tg_lines.append(f"   🔑 Session: {extra}")
-        tg_lines.append(f"   📌 {status}")
+        tg_lines.append(f"{icon} 签到{'成功' if ok else '失败'}" + (f",本次签到获得{earned_display}" if ok else f": {extra}"))
+        tg_lines.append(f"👤 登录账户: {name}")
+        tg_lines.append(f"💰 昨日余额: {before_display}")
+        tg_lines.append(f"💰 当前余额: {after_display}")
+        tg_lines.append(f"🔑 Session: {extra}")
+        tg_lines.append(f"⏱️ 签到时间: {now}")
         tg_lines.append("")
 
-    tg_lines.append(f"📊 <b>{success_count}/{len(accounts)}</b> 账号签到成功")
-    tg_lines.append(f"🔗 <a href='{REPO_URL}'>GitHub 仓库</a>")
+    tg_lines.append(f"📊 {success_count}/{len(accounts)} 账号签到成功")
+    tg_lines.append(f"🔗 {REPO_URL}")
 
     tg_msg = "\n".join(tg_lines)
     print(f"\n{'=' * 50}")
