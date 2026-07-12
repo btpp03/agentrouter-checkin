@@ -2,8 +2,8 @@ name: AgentRouter 自动签到
 
 on:
   schedule:
-    # 每 6 小时执行一次
-    - cron: '0 */6 * * *'
+    # 每天 2 次：早上 8 点、晚上 20 点（北京时间）
+    - cron: '0 0,12 * * *'
   workflow_dispatch:  # 支持手动触发
 
 jobs:
