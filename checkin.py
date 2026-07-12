@@ -151,8 +151,13 @@ def check_in(account):
         # 查询用户信息（获取额度）
         quota_raw = 0
         user_resp = client.get(f"{API_BASE}/user/self", headers=headers)
+        print(f"[{name}] 🔍 user/self → HTTP {user_resp.status_code}, body[:200]: {user_resp.text[:200]}")
         if user_resp.status_code == 200:
-            user_data = user_resp.json()
+            try:
+                user_data = user_resp.json()
+            except json.JSONDecodeError:
+                print(f"[{name}] ⚠️ user/self 返回非 JSON: {user_resp.text[:200]}")
+                user_data = {}
             if user_data.get("success") and user_data.get("data"):
                 quota_raw = user_data["data"].get("quota", 0)
                 quota_display = f"${round(quota_raw/500000, 2)}" if quota_raw > 0 else "$0"
@@ -164,12 +169,17 @@ def check_in(account):
             headers=headers,
             json={},
         )
+        print(f"[{name}] 🔍 sign_in → HTTP {checkin_resp.status_code}, body[:200]: {checkin_resp.text[:200]}")
 
         earned = 0
         after_quota_raw = 0
 
         if checkin_resp.status_code == 200:
-            result = checkin_resp.json()
+            try:
+                result = checkin_resp.json()
+            except json.JSONDecodeError:
+                print(f"[{name}] ⚠️ sign_in 返回非 JSON: {checkin_resp.text[:200]}")
+                result = {}
             ret = result.get("ret", result.get("code", -1))
             msg = result.get("msg", result.get("message", ""))
 
@@ -193,6 +203,8 @@ def check_in(account):
 
     except Exception as e:
         print(f"[{name}] ❌ 异常: {e}")
+        import traceback
+        traceback.print_exc()
         return False, name, 0, str(e), 0, 0
     finally:
         client.close()
