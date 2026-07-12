@@ -11,12 +11,35 @@ from datetime import datetime
 
 import httpx
 
+# Telegram 通知配置
+TG_BOT_TOKEN = os.getenv("TG_BOT_TOKEN", "")
+TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
+
 # 代理配置（从环境变量读取）
 SOCKS5_PROXY = os.getenv("SOCKS5_PROXY", "")
 # 签到账号配置（JSON 格式）
 ACCOUNTS_JSON = os.getenv("AGENTROUTER_ACCOUNTS", "")
 
 API_BASE = "https://agentrouter.org/console/api"
+
+
+def send_tg_notification(message):
+    """发送 Telegram 通知"""
+    if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        return
+    try:
+        httpx.post(
+            f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
+            json={
+                "chat_id": TG_CHAT_ID,
+                "text": message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True,
+            },
+            timeout=10,
+        )
+    except Exception as e:
+        print(f"[通知] ❌ Telegram 发送失败: {e}")
 
 
 def get_proxy_client():
@@ -166,8 +189,19 @@ def main():
             success_count += 1
 
     print(f"\n{'=' * 50}")
-    print(f"📊 结果: {success_count}/{len(accounts)} 成功")
+    summary = f"📊 结果: {success_count}/{len(accounts)} 成功"
+    print(summary)
     print(f"{'=' * 50}")
+
+    # 发送 Telegram 通知
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    emoji = "✅" if success_count == len(accounts) else "⚠️"
+    tg_msg = (
+        f"{emoji} <b>AgentRouter 签到</b>\n"
+        f"🕐 {now}\n"
+        f"📊 {success_count}/{len(accounts)} 账号签到成功"
+    )
+    send_tg_notification(tg_msg)
 
     if success_count < len(accounts):
         sys.exit(1)

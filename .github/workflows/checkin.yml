@@ -27,5 +27,7 @@ jobs:
         env:
           SOCKS5_PROXY: ${{ secrets.SOCKS5_PROXY }}
           AGENTROUTER_ACCOUNTS: ${{ secrets.AGENTROUTER_ACCOUNTS }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           python checkin.py
