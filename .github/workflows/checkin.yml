@@ -21,7 +21,7 @@ jobs:
 
       - name: 安装依赖
         run: |
-          pip install httpx[http2]
+          pip install httpx[http2,socks]
 
       - name: 执行签到
         env:
