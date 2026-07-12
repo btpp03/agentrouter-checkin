@@ -33,6 +33,8 @@
 |---|---|
 | `AGENTROUTER_ACCOUNTS` | 账号配置 JSON（见下方） |
 | `SOCKS5_PROXY` | SOCKS5 代理地址，如 `socks5://user:pass@host:port` |
+| `TG_BOT_TOKEN` | Telegram Bot Token（可选，用于通知） |
+| `TG_CHAT_ID` | Telegram Chat ID（可选，用于通知） |
 
 **AGENTROUTER_ACCOUNTS 格式：**
 
