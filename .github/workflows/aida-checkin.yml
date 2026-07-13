@@ -1,0 +1,21 @@
+name: Aida 自动续期
+
+on:
+  schedule:
+    # 每 6 小时执行一次
+    - cron: "0 */6 * * *"
+  workflow_dispatch: # 手动触发
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 执行 Aida 续期
+        env:
+          AIDA_SESSION_TOKEN: ${{ secrets.AIDA_SESSION_TOKEN }}
+          SOCKS5_PROXY: ${{ secrets.SOCKS5_PROXY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python3 aida_checkin.py
