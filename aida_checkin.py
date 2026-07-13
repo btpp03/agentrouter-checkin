@@ -31,20 +31,27 @@ REPO_URL = "https://github.com/btpp03/agentrouter-checkin/blob/main/aida_checkin
 
 def send_tg(message):
     if not TG_BOT_TOKEN or not TG_CHAT_ID:
+        print("[TG] ⚠️ 未配置 TG_BOT_TOKEN 或 TG_CHAT_ID")
         return
     try:
         data = json.dumps({
             "chat_id": TG_CHAT_ID, "text": message,
             "parse_mode": "HTML", "disable_web_page_preview": True,
         })
-        subprocess.run(
+        r = subprocess.run(
             ["curl", "-s", "-X", "POST",
              f"https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage",
              "-H", "Content-Type: application/json", "-d", data,
              "--max-time", "10"],
-            capture_output=True, timeout=15)
+            capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            print(f"[TG] ❌ curl 失败: {r.stderr}")
+        elif '"ok":false' in r.stdout:
+            print(f"[TG] ❌ API 错误: {r.stdout[:200]}")
+        else:
+            print(f"[TG] ✅ 通知已发送")
     except Exception as e:
-        print(f"[TG] ❌ {e}")
+        print(f"[TG] ❌ 异常: {e}")
 
 
 def _curl(args, timeout=35):
