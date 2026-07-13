@@ -26,7 +26,7 @@ AUTH_ISSUER = "https://auth.aida0710.work/api/auth"
 API_BASE = "https://hosting.aida0710.work/api"
 CLIENT_ID = "mochi-portal"
 REDIRECT_URI = "https://hosting.aida0710.work/auth/callback"
-REPO_URL = "https://github.com/btpp03/agentrouter-checkin"
+REPO_URL = "https://github.com/btpp03/agentrouter-checkin/blob/main/aida_checkin.py"
 
 
 def send_tg(message):
